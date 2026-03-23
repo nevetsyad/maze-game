@@ -1,0 +1,644 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Maze Runner 🦞</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            color: #fff;
+            overflow: hidden;
+            touch-action: none;
+        }
+
+        h1 {
+            font-size: 2rem;
+            margin-bottom: 10px;
+            text-shadow: 0 0 20px rgba(99, 102, 241, 0.5);
+        }
+
+        .info {
+            font-size: 0.9rem;
+            color: #aaa;
+            margin-bottom: 15px;
+            text-align: center;
+        }
+
+        #game-container {
+            position: relative;
+            border-radius: 8px;
+            overflow: hidden;
+            box-shadow: 0 0 40px rgba(99, 102, 241, 0.3);
+        }
+
+        #maze {
+            display: block;
+            border-radius: 8px;
+        }
+
+        #ball {
+            position: absolute;
+            border-radius: 50%;
+            background: radial-gradient(circle at 30% 30%, #fff, #4ade80);
+            box-shadow: 0 0 10px rgba(74, 222, 128, 0.8), inset -2px -2px 4px rgba(0,0,0,0.3);
+            pointer-events: none;
+            transition: transform 0.05s linear;
+        }
+
+        .controls {
+            margin-top: 20px;
+            display: flex;
+            gap: 15px;
+            flex-wrap: wrap;
+            justify-content: center;
+        }
+
+        button {
+            padding: 12px 24px;
+            font-size: 1rem;
+            border: none;
+            border-radius: 25px;
+            cursor: pointer;
+            background: linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%);
+            color: white;
+            font-weight: 600;
+            transition: all 0.3s ease;
+            box-shadow: 0 4px 15px rgba(99, 102, 241, 0.4);
+        }
+
+        button:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 25px rgba(99, 102, 241, 0.6);
+        }
+
+        button:active {
+            transform: translateY(0);
+        }
+
+        .stats {
+            margin-top: 15px;
+            display: flex;
+            gap: 30px;
+            font-size: 1.1rem;
+        }
+
+        .stat {
+            background: rgba(255, 255, 255, 0.1);
+            padding: 10px 20px;
+            border-radius: 8px;
+        }
+
+        .stat-value {
+            color: #4ade80;
+            font-weight: bold;
+        }
+
+        #permission-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(0, 0, 0, 0.9);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 1000;
+            text-align: center;
+            padding: 20px;
+        }
+
+        #permission-overlay.hidden {
+            display: none;
+        }
+
+        #permission-overlay h2 {
+            font-size: 1.5rem;
+            margin-bottom: 15px;
+        }
+
+        #permission-overlay p {
+            color: #aaa;
+            margin-bottom: 20px;
+        }
+
+        .difficulty {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 15px;
+        }
+
+        .difficulty select {
+            padding: 8px 16px;
+            border-radius: 8px;
+            border: none;
+            background: #333;
+            color: white;
+            font-size: 1rem;
+            cursor: pointer;
+        }
+
+        #keyboard-hint {
+            margin-top: 15px;
+            font-size: 0.8rem;
+            color: #666;
+        }
+
+        .celebration {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            pointer-events: none;
+            overflow: hidden;
+        }
+
+        .celebration.hidden {
+            display: none;
+        }
+    </style>
+</head>
+<body>
+    <div id="permission-overlay">
+        <div>
+            <h2>🎮 Maze Runner</h2>
+            <p>Tilt your phone to roll the ball through the maze!<br><br>
+            Or use arrow keys / WASD on desktop.</p>
+            <button id="start-btn">Start Game</button>
+        </div>
+    </div>
+
+    <h1>🦞 Maze Runner</h1>
+    <div class="info">Tilt your phone to move • Reach the green zone!</div>
+
+    <div class="difficulty">
+        <select id="difficulty">
+            <option value="easy">Easy (10x10)</option>
+            <option value="medium" selected>Medium (15x15)</option>
+            <option value="hard">Hard (20x20)</option>
+            <option value="extreme">Extreme (30x30)</option>
+        </select>
+    </div>
+
+    <div id="game-container">
+        <canvas id="maze"></canvas>
+        <div id="ball"></div>
+    </div>
+
+    <div class="stats">
+        <div class="stat">Time: <span id="time" class="stat-value">0.0s</span></div>
+        <div class="stat">Moves: <span id="moves" class="stat-value">0</span></div>
+    </div>
+
+    <div class="controls">
+        <button id="new-maze-btn">🔄 New Maze</button>
+    </div>
+
+    <div id="keyboard-hint">Desktop: Use Arrow keys or WASD</div>
+
+    <script>
+        // Game Configuration
+        const CONFIG = {
+            easy: { cols: 10, rows: 10, cellSize: 40 },
+            medium: { cols: 15, rows: 15, cellSize: 30 },
+            hard: { cols: 20, rows: 20, cellSize: 25 },
+            extreme: { cols: 30, rows: 30, cellSize: 20 }
+        };
+
+        // Game State
+        let maze = [];
+        let ball = { x: 0, y: 0, vx: 0, vy: 0 };
+        let goal = { x: 0, y: 0 };
+        let config = CONFIG.medium;
+        let cellSize = 30;
+        let isPlaying = false;
+        let startTime = 0;
+        let moves = 0;
+        let tiltSensitivity = 0.15;
+        let ballSpeed = 0.3;
+        let friction = 0.92;
+        const ballRadius = 8;
+
+        // DOM Elements
+        const canvas = document.getElementById('maze');
+        const ctx = canvas.getContext('2d');
+        const ballEl = document.getElementById('ball');
+        const timeEl = document.getElementById('time');
+        const movesEl = document.getElementById('moves');
+        const overlay = document.getElementById('permission-overlay');
+
+        // Maze generation using DFS
+        function generateMaze(cols, rows) {
+            const grid = [];
+            for (let y = 0; y < rows; y++) {
+                grid[y] = [];
+                for (let x = 0; x < cols; x++) {
+                    grid[y][x] = { 
+                        visited: false, 
+                        walls: { top: true, right: true, bottom: true, left: true } 
+                    };
+                }
+            }
+
+            const stack = [];
+            let current = { x: 0, y: 0 };
+            grid[0][0].visited = true;
+            stack.push(current);
+
+            while (stack.length > 0) {
+                current = stack[stack.length - 1];
+                const neighbors = getUnvisitedNeighbors(current, grid);
+
+                if (neighbors.length > 0) {
+                    const neighbor = neighbors[Math.floor(Math.random() * neighbors.length)];
+                    removeWall(current, neighbor);
+                    grid[neighbor.y][neighbor.x].visited = true;
+                    stack.push(neighbor);
+                } else {
+                    stack.pop();
+                }
+            }
+
+            return grid;
+        }
+
+        function getUnvisitedNeighbors(cell, grid) {
+            const neighbors = [];
+            const { x, y } = cell;
+
+            if (y > 0 && !grid[y - 1][x].visited) neighbors.push({ x, y: y - 1 });
+            if (x < grid[0].length - 1 && !grid[y][x + 1].visited) neighbors.push({ x: x + 1, y });
+            if (y < grid.length - 1 && !grid[y + 1][x].visited) neighbors.push({ x, y: y + 1 });
+            if (x > 0 && !grid[y][x - 1].visited) neighbors.push({ x: x - 1, y });
+
+            return neighbors;
+        }
+
+        function removeWall(cell1, cell2) {
+            const dx = cell1.x - cell2.x;
+            const dy = cell1.y - cell2.y;
+
+            if (dx === 1) {
+                grid[cell1.y][cell1.x].walls.left = false;
+                grid[cell2.y][cell2.x].walls.right = false;
+            } else if (dx === -1) {
+                grid[cell1.y][cell1.x].walls.right = false;
+                grid[cell2.y][cell2.x].walls.left = false;
+            } else if (dy === 1) {
+                grid[cell1.y][cell1.x].walls.bottom = false;
+                grid[cell2.y][cell2.x].walls.top = false;
+            } else if (dy === -1) {
+                grid[cell1.y][cell1.x].walls.top = false;
+                grid[cell2.y][cell2.x].walls.bottom = false;
+            }
+        }
+
+        function drawMaze() {
+            const width = config.cols * cellSize;
+            const height = config.rows * cellSize;
+
+            canvas.width = width;
+            canvas.height = height;
+
+            // Background
+            ctx.fillStyle = '#1a1a2e';
+            ctx.fillRect(0, 0, width, height);
+
+            // Draw walls
+            ctx.strokeStyle = '#6366f1';
+            ctx.lineWidth = 2;
+            ctx.lineCap = 'round';
+
+            for (let y = 0; y < config.rows; y++) {
+                for (let x = 0; x < config.cols; x++) {
+                    const cell = maze[y][x];
+                    const px = x * cellSize;
+                    const py = y * cellSize;
+
+                    ctx.beginPath();
+                    if (cell.walls.top) {
+                        ctx.moveTo(px, py);
+                        ctx.lineTo(px + cellSize, py);
+                    }
+                    if (cell.walls.right) {
+                        ctx.moveTo(px + cellSize, py);
+                        ctx.lineTo(px + cellSize, py + cellSize);
+                    }
+                    if (cell.walls.bottom) {
+                        ctx.moveTo(px + cellSize, py + cellSize);
+                        ctx.lineTo(px, py + cellSize);
+                    }
+                    if (cell.walls.left) {
+                        ctx.moveTo(px, py + cellSize);
+                        ctx.lineTo(px, py);
+                    }
+                    ctx.stroke();
+                }
+            }
+
+            // Draw goal
+            const goalX = goal.x * cellSize + cellSize / 2;
+            const goalY = goal.y * cellSize + cellSize / 2;
+            ctx.fillStyle = '#4ade80';
+            ctx.beginPath();
+            ctx.arc(goalX, goalY, cellSize / 3, 0, Math.PI * 2);
+            ctx.fill();
+
+            // Goal glow effect
+            const gradient = ctx.createRadialGradient(goalX, goalY, 0, goalX, goalY, cellSize / 2);
+            gradient.addColorStop(0, 'rgba(74, 222, 128, 0.5)');
+            gradient.addColorStop(1, 'rgba(74, 222, 128, 0)');
+            ctx.fillStyle = gradient;
+            ctx.beginPath();
+            ctx.arc(goalX, goalY, cellSize / 2, 0, Math.PI * 2);
+            ctx.fill();
+
+            // Update ball position visually
+            updateBallVisuals();
+        }
+
+        function updateBallVisuals() {
+            const x = ball.x * cellSize + cellSize / 2;
+            const y = ball.y * cellSize + cellSize / 2;
+
+            ballEl.style.width = ballRadius * 2 + 'px';
+            ballEl.style.height = ballRadius * 2 + 'px';
+            ballEl.style.left = (ball.x * cellSize + cellSize / 2 - ballRadius) + 'px';
+            ballEl.style.top = (ball.y * cellSize + cellSize / 2 - ballRadius) + 'px';
+        }
+
+        function getCellAt(x, y) {
+            const cellX = Math.floor(x);
+            const cellY = Math.floor(y);
+            return maze[cellY]?.[cellX] || null;
+        }
+
+        function canMoveTo(x, y, dx, dy) {
+            const cell = getCellAt(x, y);
+            if (!cell) return false;
+
+            const edgeX = x - Math.floor(x);
+            const edgeY = y - Math.floor(y);
+
+            // Check wall collision based on movement direction and position at cell edge
+            if (dx > 0.1 && cell.walls.right) {
+                return false;
+            }
+            if (dx < -0.1 && cell.walls.left) {
+                return false;
+            }
+            if (dy > 0.1 && cell.walls.bottom) {
+                return false;
+            }
+            if (dy < -0.1 && cell.walls.top) {
+                return false;
+            }
+
+            return true;
+        }
+
+        function checkWallCollision(newX, newY) {
+            const dx = newX - ball.x;
+            const dy = newY - ball.y;
+
+            if (!canMoveTo(ball.x, ball.y, dx, dy)) {
+                // Calculate bounce reflection
+                let bounceX = ball.x;
+                let bounceY = ball.y;
+
+                if (dx > 0 && !canMoveTo(ball.x, ball.y, dx, dy)) {
+                    bounceX -= 0.01;
+                } else if (dx < 0 && !canMoveTo(ball.x, ball.y, dx, dy)) {
+                    bounceX += 0.01;
+                }
+
+                if (dy > 0 && !canMoveTo(ball.x, ball.y, dx, dy)) {
+                    bounceY -= 0.01;
+                } else if (dy < 0 && !canMoveTo(ball.x, ball.y, dx, dy)) {
+                    bounceY += 0.01;
+                }
+
+                return { x: bounceX, y: bounceY };
+            }
+            
+            return { x: newX, y: newY };
+        }
+
+        function updatePhysics() {
+            if (!isPlaying) return;
+
+            // Apply velocity with friction
+            ball.vx *= friction;
+            ball.vy *= friction;
+
+            // Minimum velocity threshold - stop if very slow
+            const speed = Math.sqrt(ball.vx * ball.vx + ball.vy * ball.vy);
+            if (speed < 0.001) {
+                ball.vx = 0;
+                ball.vy = 0;
+            }
+
+            // Move ball and check collision
+            const newPosX = ball.x + ball.vx;
+            const newPosY = ball.y + ball.vy;
+
+            // Check X collision first
+            let finalX = newPosX;
+            if (!canMoveTo(ball.x, ball.y, ball.vx, 0)) {
+                finalX = checkWallCollision(newPosX, ball.y).x;
+                ball.vx *= -0.3; // Bounce with energy loss
+            }
+
+            // Check Y collision using final X position
+            let finalY = newPosY;
+            if (!canMoveTo(finalX, ball.y, 0, ball.vy)) {
+                finalY = checkWallCollision(finalX, newPosY).y;
+                ball.vy *= -0.3; // Bounce with energy loss
+            }
+
+            ball.x = Math.max(0, Math.min(config.cols - 1, finalX));
+            ball.y = Math.max(0, Math.min(config.rows - 1, finalY));
+
+            // Update visual position
+            updateBallVisuals();
+
+            // Count moves when moving significantly
+            if (speed > 0.02) {
+                moves++;
+                movesEl.textContent = Math.round(moves);
+            }
+
+            // Check goal
+            if (Math.floor(ball.x) === goal.x && Math.floor(ball.y) === goal.y) {
+                gameWon();
+            }
+        }
+
+        function gameWon() {
+            if (!isPlaying) return;
+            isPlaying = false;
+
+            const time = ((Date.now() - startTime) / 1000).toFixed(2);
+            alert(`🎉 Maze Complete!\n\nTime: ${time}s\nMoves: ${Math.round(moves)}`);
+
+            // Save high score
+            const highScores = JSON.parse(localStorage.getItem('mazeHighScores') || '[]');
+            highScores.push({
+                date: new Date().toISOString(),
+                difficulty: document.getElementById('difficulty').value,
+                time: parseFloat(time),
+                moves
+            });
+            localStorage.setItem('mazeHighScores', JSON.stringify(highScores.slice(-10)));
+        }
+
+        function initGame() {
+            const diff = document.getElementById('difficulty').value;
+            config = CONFIG[diff];
+
+            // Generate maze
+            maze = generateMaze(config.cols, config.rows);
+
+            // Set start and goal positions
+            ball.x = 0.5;
+            ball.y = 0.5;
+            ball.vx = 0;
+            ball.vy = 0;
+
+            goal.x = config.cols - 1;
+            goal.y = config.rows - 1;
+
+            moves = 0;
+            movesEl.textContent = '0';
+
+            drawMaze();
+        }
+
+        function startGame() {
+            initGame();
+            isPlaying = true;
+            startTime = Date.now();
+
+            // Request device orientation permission (iOS 13+)
+            if (typeof DeviceOrientationEvent !== 'undefined' && 
+                typeof DeviceOrientationEvent.requestPermission === 'function') {
+                DeviceOrientationEvent.requestPermission()
+                    .then(permission => {
+                        if (permission === 'granted') {
+                            window.addEventListener('deviceorientation', handleOrientation);
+                        }
+                    })
+                    .catch(err => console.error('Permission denied:', err));
+            } else {
+                // Non-iOS or already permitted
+                window.addEventListener('deviceorientation', handleOrientation);
+            }
+
+            gameLoop();
+        }
+
+        function handleOrientation(event) {
+            if (!isPlaying) return;
+
+            // Get beta (front/back tilt) and gamma (left/right tilt)
+            const beta = event.beta;  // -180 to 180, positive when tilting forward
+            const gamma = event.gamma; // -90 to 90, positive when tilting right
+
+            // Apply tilt as acceleration
+            const maxAccel = 0.1;
+            
+            // Clamp values to reasonable range
+            const clampedBeta = Math.max(-45, Math.min(45, beta || 0));
+            const clampedGamma = Math.max(-45, Math.min(45, gamma || 0));
+
+            // Convert tilt to acceleration (inverted - tilting right moves ball right)
+            let accelX = (clampedGamma / 45) * maxAccel;
+            let accelY = -(clampedBeta / 45) * maxAccel;
+
+            // Add to velocity
+            ball.vx += accelX;
+            ball.vy += accelY;
+
+            // Cap maximum velocity
+            const maxVelocity = 0.4;
+            ball.vx = Math.max(-maxVelocity, Math.min(maxVelocity, ball.vx));
+            ball.vy = Math.max(-maxVelocity, Math.min(maxVelocity, ball.vy));
+        }
+
+        // Keyboard controls for desktop
+        const keys = {};
+        window.addEventListener('keydown', e => {
+            keys[e.key.toLowerCase()] = true;
+            ['arrowup', 'arrowdown', 'arrowleft', 'arrowright', 'w', 'a', 's', 'd'].includes(e.key.toLowerCase()) && e.preventDefault();
+        });
+
+        window.addEventListener('keyup', e => {
+            keys[e.key.toLowerCase()] = false;
+        });
+
+        function handleKeyboard() {
+            if (!isPlaying) return;
+
+            const accel = 0.08;
+            
+            if (keys['arrowup'] || keys['w']) ball.vy -= accel;
+            if (keys['arrowdown'] || keys['s']) ball.vy += accel;
+            if (keys['arrowleft'] || keys['a']) ball.vx -= accel;
+            if (keys['arrowright'] || keys['d']) ball.vx += accel;
+
+            // Cap velocity
+            const maxVelocity = 0.4;
+            ball.vx = Math.max(-maxVelocity, Math.min(maxVelocity, ball.vx));
+            ball.vy = Math.max(-maxVelocity, Math.min(maxVelocity, ball.vy));
+        }
+
+        function gameLoop() {
+            handleKeyboard();
+            updatePhysics();
+
+            // Update timer
+            if (isPlaying) {
+                const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
+                timeEl.textContent = elapsed + 's';
+            }
+
+            requestAnimationFrame(gameLoop);
+        }
+
+        // Event Listeners
+        document.getElementById('start-btn').addEventListener('click', () => {
+            overlay.classList.add('hidden');
+            startGame();
+        });
+
+        document.getElementById('new-maze-btn').addEventListener('click', () => {
+            isPlaying = true;
+            startTime = Date.now();
+            initGame();
+        });
+
+        document.getElementById('difficulty').addEventListener('change', () => {
+            isPlaying = true;
+            startTime = Date.now();
+            initGame();
+        });
+
+        // Initial draw with placeholder config
+        config = CONFIG.medium;
+        maze = generateMaze(config.cols, config.rows);
+    </script>
+</body>
+</html>
