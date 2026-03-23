@@ -395,86 +395,81 @@
         function updatePhysics() {
             if (!isPlaying) return;
 
-            // Apply friction (surface resistance)
+            // Apply friction
             ball.vx *= SURFACE_FRICTION;
             ball.vy *= SURFACE_FRICTION;
 
-            // Minimum velocity threshold - stop if very slow
+            // Stop if very slow
             const speed = Math.sqrt(ball.vx * ball.vx + ball.vy * ball.vy);
             if (speed < VELOCITY_THRESHOLD) {
                 ball.vx = 0;
                 ball.vy = 0;
             }
 
-            // Ball radius padding (fraction of cell) - how close to wall before collision
-            const ballPad = 0.4;
+            // Ball radius (fraction of cell size)
+            const r = 0.3;
 
-            // Calculate target position
-            let targetX = ball.x + ball.vx;
-            let targetY = ball.y + ball.vy;
+            // Target position
+            let newX = ball.x + ball.vx;
+            let newY = ball.y + ball.vy;
 
-            // Get current cell
-            const cellX = Math.floor(ball.x);
-            const cellY = Math.floor(ball.y);
+            // Clamp to maze bounds first
+            newX = Math.max(r, Math.min(config.cols - r, newX));
+            newY = Math.max(r, Math.min(config.rows - r, newY));
 
-            const currentCell = maze[cellY]?.[cellX];
-            if (!currentCell) return;
-
-            // Check X-axis: collision with cell boundary walls
-            if (targetX > ball.x) {
-                // Moving right - check if crossing into next cell
-                const wallX = cellX + 1; // The x-coordinate of the right edge
-                if (targetX > wallX - ballPad) {
-                    // Would cross the boundary
-                    if (currentCell.walls.right) {
-                        // Wall exists - bounce and clamp to boundary
-                        ball.vx *= -BALL_BOUNCE;
-                        targetX = wallX - ballPad;
-                    }
-                }
-            } else if (targetX < ball.x) {
-                // Moving left - check if crossing into previous cell
-                const wallX = cellX; // The x-coordinate of the left edge
-                if (targetX < wallX + ballPad) {
-                    // Would cross the boundary
-                    if (currentCell.walls.left) {
-                        // Wall exists - bounce and clamp to boundary
-                        ball.vx *= -BALL_BOUNCE;
-                        targetX = wallX + ballPad;
+            // Check X movement
+            if (ball.vx !== 0) {
+                const currentCellX = Math.floor(ball.x);
+                const newCellX = Math.floor(newX);
+                
+                if (newCellX !== currentCellX) {
+                    // Crossing cell boundary - check for wall
+                    const cellY = Math.floor(ball.y);
+                    const cell = maze[cellY]?.[currentCellX];
+                    
+                    if (cell) {
+                        if (ball.vx > 0 && cell.walls.right) {
+                            // Hit right wall
+                            ball.vx *= -BALL_BOUNCE;
+                            newX = currentCellX + 1 - r;
+                        } else if (ball.vx < 0 && cell.walls.left) {
+                            // Hit left wall  
+                            ball.vx *= -BALL_BOUNCE;
+                            newX = currentCellX + r;
+                        }
                     }
                 }
             }
 
-            // Check Y-axis: collision with cell boundary walls
-            if (targetY > ball.y) {
-                // Moving down - check if crossing into cell below
-                const wallY = cellY + 1; // The y-coordinate of the bottom edge
-                if (targetY > wallY - ballPad) {
-                    // Would cross the boundary
-                    if (currentCell.walls.bottom) {
-                        // Wall exists - bounce and clamp to boundary
-                        ball.vy *= -BALL_BOUNCE;
-                        targetY = wallY - ballPad;
-                    }
-                }
-            } else if (targetY < ball.y) {
-                // Moving up - check if crossing into cell above
-                const wallY = cellY; // The y-coordinate of the top edge
-                if (targetY < wallY + ballPad) {
-                    // Would cross the boundary
-                    if (currentCell.walls.top) {
-                        // Wall exists - bounce and clamp to boundary
-                        ball.vy *= -BALL_BOUNCE;
-                        targetY = wallY + ballPad;
+            // Check Y movement  
+            if (ball.vy !== 0) {
+                const currentCellY = Math.floor(ball.y);
+                const newCellY = Math.floor(newY);
+                
+                if (newCellY !== currentCellY) {
+                    // Crossing cell boundary - check for wall
+                    const cellX = Math.floor(ball.x);
+                    const cell = maze[currentCellY]?.[cellX];
+                    
+                    if (cell) {
+                        if (ball.vy > 0 && cell.walls.bottom) {
+                            // Hit bottom wall
+                            ball.vy *= -BALL_BOUNCE;
+                            newY = currentCellY + 1 - r;
+                        } else if (ball.vy < 0 && cell.walls.top) {
+                            // Hit top wall
+                            ball.vy *= -BALL_BOUNCE;
+                            newY = currentCellY + r;
+                        }
                     }
                 }
             }
 
-            // Apply final position (clamped to maze bounds)
-            ball.x = Math.max(0, Math.min(config.cols - 1, targetX));
-            ball.y = Math.max(0, Math.min(config.rows - 1, targetY));
+            // Apply position
+            ball.x = newX;
+            ball.y = newY;
 
-            // Update visual position
+            // Update visuals
             updateBallVisuals();
 
             // Check goal
