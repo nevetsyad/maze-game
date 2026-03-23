@@ -536,32 +536,17 @@
         function handleOrientation(event) {
             if (!isPlaying) return;
 
-            // Use absolute orientation (requires permission on iOS)
-            if (event.absoluteOrientation) {
-                const ao = event.absoluteOrientation;
-                // Beta: forward tilt (0 = flat, 90 = face down)
-                const beta = ao.beta ? ao.beta * (Math.PI / 180) : 0;
-                // Gamma: left/right tilt (-90 = left, 0 = flat, 90 = right)
-                const gamma = ao.gamma ? ao.gamma * (Math.PI / 180) : 0;
-                
-                // Calculate acceleration components based on tilt
-                // Ball rolls in direction of tilt (like real physics)
-                const sinBeta = Math.sin(beta);
-                const cosBeta = Math.cos(beta);
-                const sinGamma = Math.sin(gamma);
-                const cosGamma = Math.cos(gamma);
-                
-                // Acceleration due to gravity component along the surface
-                ball.vx += sinGamma * GRAVITY_ACCEL;
-                ball.vy += -sinBeta * GRAVITY_ACCEL;
-            } else {
-                // Fallback to device orientation (relative)
-                const beta = (event.beta || 0) * (Math.PI / 180);
-                const gamma = (event.gamma || 0) * (Math.PI / 180);
-                
-                ball.vx += Math.sin(gamma) * GRAVITY_ACCEL;
-                ball.vy += -Math.sin(beta) * GRAVITY_ACCEL;
-            }
+            // Device orientation values
+            // Beta: front/back tilt (-180 to 180, positive = tilted forward/top down)
+            // Gamma: left/right tilt (-90 to 90, positive = tilted right)
+            const beta = (event.beta || 0) * (Math.PI / 180);
+            const gamma = (event.gamma || 0) * (Math.PI / 180);
+            
+            // Ball rolls in direction of tilt (like a real ball on a tilted surface)
+            // Tilt phone forward (beta positive) -> ball rolls down (vy positive)
+            // Tilt phone right (gamma positive) -> ball rolls right (vx positive)
+            ball.vx += Math.sin(gamma) * GRAVITY_ACCEL;
+            ball.vy += Math.sin(beta) * GRAVITY_ACCEL;
         }
 
         // Keyboard controls for desktop
