@@ -200,7 +200,6 @@
 
     <div class="stats">
         <div class="stat">Time: <span id="time" class="stat-value">0.0s</span></div>
-        <div class="stat">Moves: <span id="moves" class="stat-value">0</span></div>
     </div>
 
     <div class="controls">
@@ -208,6 +207,7 @@
     </div>
 
     <div id="keyboard-hint">Desktop: Use Arrow keys or WASD</div>
+    <div id="debug-info" style="display:none; margin-top: 10px; font-size: 0.75rem; color: #666;"></div>
 
     <script>
         // Game Configuration
@@ -218,6 +218,14 @@
             extreme: { cols: 30, rows: 30, cellSize: 20 }
         };
 
+        // Physics constants (realistic ball physics)
+        const GRAVITY_ACCEL = 0.008;      // Acceleration due to tilt
+        const SURFACE_FRICTION = 0.985;   // Rolling friction (higher = less friction)
+        const BALL_BOUNCE = 0.4;          // Energy retained on wall bounce
+        const VELOCITY_THRESHOLD = 0.001; // Stop if below this speed
+        const MAX_VELOCITY = 0.5;         // Cap ball speed
+        const ballRadius = 8;
+
         // Game State
         let maze = [];
         let ball = { x: 0, y: 0, vx: 0, vy: 0 };
@@ -226,18 +234,12 @@
         let cellSize = 30;
         let isPlaying = false;
         let startTime = 0;
-        let moves = 0;
-        let tiltSensitivity = 0.15;
-        let ballSpeed = 0.3;
-        let friction = 0.92;
-        const ballRadius = 8;
 
         // DOM Elements
         const canvas = document.getElementById('maze');
         const ctx = canvas.getContext('2d');
         const ballEl = document.getElementById('ball');
         const timeEl = document.getElementById('time');
-        const movesEl = document.getElementById('moves');
         const overlay = document.getElementById('permission-overlay');
 
         // Maze generation using DFS
@@ -264,7 +266,7 @@
 
                 if (neighbors.length > 0) {
                     const neighbor = neighbors[Math.floor(Math.random() * neighbors.length)];
-                    removeWall(current, neighbor);
+                    removeWall(current, neighbor, grid);
                     grid[neighbor.y][neighbor.x].visited = true;
                     stack.push(neighbor);
                 } else {
@@ -287,7 +289,7 @@
             return neighbors;
         }
 
-        function removeWall(cell1, cell2) {
+        function removeWall(cell1, cell2, grid) {
             const dx = cell1.x - cell2.x;
             const dy = cell1.y - cell2.y;
 
@@ -310,8 +312,12 @@
             const width = config.cols * cellSize;
             const height = config.rows * cellSize;
 
+            // Set canvas size (this also clears it)
             canvas.width = width;
             canvas.height = height;
+
+            // Explicitly clear canvas
+            ctx.clearRect(0, 0, width, height);
 
             // Background
             ctx.fillStyle = '#1a1a2e';
@@ -386,100 +392,81 @@
             return maze[cellY]?.[cellX] || null;
         }
 
-        function canMoveTo(x, y, dx, dy) {
-            const cell = getCellAt(x, y);
-            if (!cell) return false;
-
-            const edgeX = x - Math.floor(x);
-            const edgeY = y - Math.floor(y);
-
-            // Check wall collision based on movement direction and position at cell edge
-            if (dx > 0.1 && cell.walls.right) {
-                return false;
-            }
-            if (dx < -0.1 && cell.walls.left) {
-                return false;
-            }
-            if (dy > 0.1 && cell.walls.bottom) {
-                return false;
-            }
-            if (dy < -0.1 && cell.walls.top) {
-                return false;
-            }
-
-            return true;
-        }
-
-        function checkWallCollision(newX, newY) {
-            const dx = newX - ball.x;
-            const dy = newY - ball.y;
-
-            if (!canMoveTo(ball.x, ball.y, dx, dy)) {
-                // Calculate bounce reflection
-                let bounceX = ball.x;
-                let bounceY = ball.y;
-
-                if (dx > 0 && !canMoveTo(ball.x, ball.y, dx, dy)) {
-                    bounceX -= 0.01;
-                } else if (dx < 0 && !canMoveTo(ball.x, ball.y, dx, dy)) {
-                    bounceX += 0.01;
-                }
-
-                if (dy > 0 && !canMoveTo(ball.x, ball.y, dx, dy)) {
-                    bounceY -= 0.01;
-                } else if (dy < 0 && !canMoveTo(ball.x, ball.y, dx, dy)) {
-                    bounceY += 0.01;
-                }
-
-                return { x: bounceX, y: bounceY };
-            }
-            
-            return { x: newX, y: newY };
-        }
-
         function updatePhysics() {
             if (!isPlaying) return;
 
-            // Apply velocity with friction
-            ball.vx *= friction;
-            ball.vy *= friction;
+            // Apply friction (surface resistance)
+            ball.vx *= SURFACE_FRICTION;
+            ball.vy *= SURFACE_FRICTION;
 
             // Minimum velocity threshold - stop if very slow
             const speed = Math.sqrt(ball.vx * ball.vx + ball.vy * ball.vy);
-            if (speed < 0.001) {
+            if (speed < VELOCITY_THRESHOLD) {
                 ball.vx = 0;
                 ball.vy = 0;
+                return;
             }
 
-            // Move ball and check collision
-            const newPosX = ball.x + ball.vx;
-            const newPosY = ball.y + ball.vy;
+            // Ball radius padding (fraction of cell)
+            const ballPad = 0.15;
 
-            // Check X collision first
-            let finalX = newPosX;
-            if (!canMoveTo(ball.x, ball.y, ball.vx, 0)) {
-                finalX = checkWallCollision(newPosX, ball.y).x;
-                ball.vx *= -0.3; // Bounce with energy loss
+            // Calculate target position
+            let targetX = ball.x + ball.vx;
+            let targetY = ball.y + ball.vy;
+
+            // Clamp to maze bounds
+            targetX = Math.max(ballPad, Math.min(config.cols - ballPad, targetX));
+            targetY = Math.max(ballPad, Math.min(config.rows - ballPad, targetY));
+
+            // Get current and target cells
+            const cellX = Math.floor(ball.x);
+            const cellY = Math.floor(ball.y);
+            const targetCellX = Math.floor(targetX);
+            const targetCellY = Math.floor(targetY);
+
+            const cell = maze[cellY]?.[cellX];
+            if (!cell) return;
+
+            // X-axis collision check
+            if (targetX > ball.x) {
+                // Moving right
+                if (cell.walls.right && targetX >= cellX + 1 - ballPad) {
+                    // Hit right wall - bounce and clamp
+                    ball.vx *= -BALL_BOUNCE;
+                    targetX = cellX + 1 - ballPad;
+                }
+            } else if (targetX < ball.x) {
+                // Moving left
+                if (cell.walls.left && targetX <= cellX + ballPad) {
+                    // Hit left wall - bounce and clamp
+                    ball.vx *= -BALL_BOUNCE;
+                    targetX = cellX + ballPad;
+                }
             }
 
-            // Check Y collision using final X position
-            let finalY = newPosY;
-            if (!canMoveTo(finalX, ball.y, 0, ball.vy)) {
-                finalY = checkWallCollision(finalX, newPosY).y;
-                ball.vy *= -0.3; // Bounce with energy loss
+            // Y-axis collision check
+            if (targetY > ball.y) {
+                // Moving down
+                if (cell.walls.bottom && targetY >= cellY + 1 - ballPad) {
+                    // Hit bottom wall - bounce and clamp
+                    ball.vy *= -BALL_BOUNCE;
+                    targetY = cellY + 1 - ballPad;
+                }
+            } else if (targetY < ball.y) {
+                // Moving up
+                if (cell.walls.top && targetY <= cellY + ballPad) {
+                    // Hit top wall - bounce and clamp
+                    ball.vy *= -BALL_BOUNCE;
+                    targetY = cellY + ballPad;
+                }
             }
 
-            ball.x = Math.max(0, Math.min(config.cols - 1, finalX));
-            ball.y = Math.max(0, Math.min(config.rows - 1, finalY));
+            // Apply final position
+            ball.x = targetX;
+            ball.y = targetY;
 
             // Update visual position
             updateBallVisuals();
-
-            // Count moves when moving significantly
-            if (speed > 0.02) {
-                moves++;
-                movesEl.textContent = Math.round(moves);
-            }
 
             // Check goal
             if (Math.floor(ball.x) === goal.x && Math.floor(ball.y) === goal.y) {
@@ -492,15 +479,14 @@
             isPlaying = false;
 
             const time = ((Date.now() - startTime) / 1000).toFixed(2);
-            alert(`🎉 Maze Complete!\n\nTime: ${time}s\nMoves: ${Math.round(moves)}`);
+            alert(`🎉 Maze Complete!\n\nTime: ${time}s`);
 
             // Save high score
             const highScores = JSON.parse(localStorage.getItem('mazeHighScores') || '[]');
             highScores.push({
                 date: new Date().toISOString(),
                 difficulty: document.getElementById('difficulty').value,
-                time: parseFloat(time),
-                moves
+                time: parseFloat(time)
             });
             localStorage.setItem('mazeHighScores', JSON.stringify(highScores.slice(-10)));
         }
@@ -520,9 +506,6 @@
 
             goal.x = config.cols - 1;
             goal.y = config.rows - 1;
-
-            moves = 0;
-            movesEl.textContent = '0';
 
             drawMaze();
         }
@@ -553,29 +536,32 @@
         function handleOrientation(event) {
             if (!isPlaying) return;
 
-            // Get beta (front/back tilt) and gamma (left/right tilt)
-            const beta = event.beta;  // -180 to 180, positive when tilting forward
-            const gamma = event.gamma; // -90 to 90, positive when tilting right
-
-            // Apply tilt as acceleration
-            const maxAccel = 0.1;
-            
-            // Clamp values to reasonable range
-            const clampedBeta = Math.max(-45, Math.min(45, beta || 0));
-            const clampedGamma = Math.max(-45, Math.min(45, gamma || 0));
-
-            // Convert tilt to acceleration (inverted - tilting right moves ball right)
-            let accelX = (clampedGamma / 45) * maxAccel;
-            let accelY = -(clampedBeta / 45) * maxAccel;
-
-            // Add to velocity
-            ball.vx += accelX;
-            ball.vy += accelY;
-
-            // Cap maximum velocity
-            const maxVelocity = 0.4;
-            ball.vx = Math.max(-maxVelocity, Math.min(maxVelocity, ball.vx));
-            ball.vy = Math.max(-maxVelocity, Math.min(maxVelocity, ball.vy));
+            // Use absolute orientation (requires permission on iOS)
+            if (event.absoluteOrientation) {
+                const ao = event.absoluteOrientation;
+                // Beta: forward tilt (0 = flat, 90 = face down)
+                const beta = ao.beta ? ao.beta * (Math.PI / 180) : 0;
+                // Gamma: left/right tilt (-90 = left, 0 = flat, 90 = right)
+                const gamma = ao.gamma ? ao.gamma * (Math.PI / 180) : 0;
+                
+                // Calculate acceleration components based on tilt
+                // Ball rolls in direction of tilt (like real physics)
+                const sinBeta = Math.sin(beta);
+                const cosBeta = Math.cos(beta);
+                const sinGamma = Math.sin(gamma);
+                const cosGamma = Math.cos(gamma);
+                
+                // Acceleration due to gravity component along the surface
+                ball.vx += sinGamma * GRAVITY_ACCEL;
+                ball.vy += -sinBeta * GRAVITY_ACCEL;
+            } else {
+                // Fallback to device orientation (relative)
+                const beta = (event.beta || 0) * (Math.PI / 180);
+                const gamma = (event.gamma || 0) * (Math.PI / 180);
+                
+                ball.vx += Math.sin(gamma) * GRAVITY_ACCEL;
+                ball.vy += -Math.sin(beta) * GRAVITY_ACCEL;
+            }
         }
 
         // Keyboard controls for desktop
@@ -592,17 +578,17 @@
         function handleKeyboard() {
             if (!isPlaying) return;
 
-            const accel = 0.08;
-            
+            // Use same acceleration as device tilt for consistency
+            const accel = GRAVITY_ACCEL * 1.5; // Slightly stronger for keyboard
+
             if (keys['arrowup'] || keys['w']) ball.vy -= accel;
             if (keys['arrowdown'] || keys['s']) ball.vy += accel;
             if (keys['arrowleft'] || keys['a']) ball.vx -= accel;
             if (keys['arrowright'] || keys['d']) ball.vx += accel;
 
             // Cap velocity
-            const maxVelocity = 0.4;
-            ball.vx = Math.max(-maxVelocity, Math.min(maxVelocity, ball.vx));
-            ball.vy = Math.max(-maxVelocity, Math.min(maxVelocity, ball.vy));
+            ball.vx = Math.max(-MAX_VELOCITY, Math.min(MAX_VELOCITY, ball.vx));
+            ball.vy = Math.max(-MAX_VELOCITY, Math.min(MAX_VELOCITY, ball.vy));
         }
 
         function gameLoop() {
@@ -624,10 +610,32 @@
             startGame();
         });
 
+        function debugLog(msg) {
+            const debugEl = document.getElementById('debug-info');
+            if (debugEl) {
+                debugEl.style.display = 'block';
+                debugEl.textContent = msg;
+            }
+        }
+
         document.getElementById('new-maze-btn').addEventListener('click', () => {
+            const oldRows = maze.length;
+            debugLog(`New maze clicked! Old: ${oldRows} rows`);
             isPlaying = true;
+            ball.vx = 0;
+            ball.vy = 0;
+            ball.x = 0.5;
+            ball.y = 0.5;
             startTime = Date.now();
             initGame();
+            debugLog(`Maze: ${oldRows} → ${maze.length} rows (${config.cols}x${config.rows})`);
+
+            // Flash effect to show something happened
+            const container = document.getElementById('game-container');
+            container.style.boxShadow = '0 0 80px rgba(74, 222, 128, 0.8)';
+            setTimeout(() => {
+                container.style.boxShadow = '0 0 40px rgba(99, 102, 241, 0.3)';
+            }, 300);
         });
 
         document.getElementById('difficulty').addEventListener('change', () => {
