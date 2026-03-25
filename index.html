@@ -220,11 +220,19 @@
 
         // Physics constants (realistic ball physics)
         const GRAVITY_ACCEL = 0.008;      // Acceleration due to tilt
-        const SURFACE_FRICTION = 0.985;   // Rolling friction (higher = less friction)
-        const BALL_BOUNCE = 0.4;          // Energy retained on wall bounce
+        const SURFACE_FRICTION_BASE = 0.985;   // Rolling friction (higher = less friction)
+        const BALL_BOUNCE_BASE = 0.6;          // Energy retained on wall bounce (increased for more responsive feel)
         const VELOCITY_THRESHOLD = 0.001; // Stop if below this speed
         const MAX_VELOCITY = 0.5;         // Cap ball speed
         const ballRadius = 8;
+
+        // Difficulty-based physics modifiers
+        const PHYSICS_MODIFIERS = {
+            easy:   { friction: 1.0, bounce: 1.0 },  // Most forgiving
+            medium: { friction: 0.985, bounce: 1.0 }, // Default
+            hard:   { friction: 0.982, bounce: 0.95 }, // Slightly more friction/slower bounces
+            extreme:{ friction: 0.98, bounce: 0.9 }   // Hardest
+        };
 
         // Game State
         let maze = [];
@@ -355,21 +363,27 @@
                 }
             }
 
-            // Draw goal
+            // Draw goal with pulsing animation
             const goalX = goal.x * cellSize + cellSize / 2;
             const goalY = goal.y * cellSize + cellSize / 2;
-            ctx.fillStyle = '#4ade80';
+            
+            // Pulsing effect (sin wave for smooth animate draw)
+            const pulse = Math.sin(Date.now() / 200) * 5 + 8; // 3-13px radius oscillation
+            const pulseAlpha = (Math.sin(Date.now() / 200) + 1) * 0.5; // 0-1 alpha for glow
+            
+            // Pulsering outer glow
+            const pulseGradient = ctx.createRadialGradient(goalX, goalY, 0, goalX, goalY, cellSize / 2 + pulse);
+            pulseGradient.addColorStop(0, `rgba(74, 222, 128, ${pulseAlpha * 0.6})`);
+            pulseGradient.addColorStop(1, 'rgba(74, 222, 128, 0)');
+            ctx.fillStyle = pulseGradient;
             ctx.beginPath();
-            ctx.arc(goalX, goalY, cellSize / 3, 0, Math.PI * 2);
+            ctx.arc(goalX, goalY, cellSize / 2 + pulse, 0, Math.PI * 2);
             ctx.fill();
 
-            // Goal glow effect
-            const gradient = ctx.createRadialGradient(goalX, goalY, 0, goalX, goalY, cellSize / 2);
-            gradient.addColorStop(0, 'rgba(74, 222, 128, 0.5)');
-            gradient.addColorStop(1, 'rgba(74, 222, 128, 0)');
-            ctx.fillStyle = gradient;
+            // Solid goal zone (inner circle)
+            ctx.fillStyle = '#4ade80';
             ctx.beginPath();
-            ctx.arc(goalX, goalY, cellSize / 2, 0, Math.PI * 2);
+            ctx.arc(goalX, goalY, cellSize / 4 + pulse * 0.3, 0, Math.PI * 2);
             ctx.fill();
 
             // Update ball position visually
@@ -395,9 +409,13 @@
         function updatePhysics() {
             if (!isPlaying) return;
 
-            // Apply friction
-            ball.vx *= SURFACE_FRICTION;
-            ball.vy *= SURFACE_FRICTION;
+            // Get difficulty-based physics modifiers
+            const diff = document.getElementById('difficulty').value;
+            const mods = PHYSICS_MODIFIERS[diff] || PHYSICS_MODIFIERS.medium;
+            
+            // Apply difficulty-adjusted friction
+            ball.vx *= SURFACE_FRICTION_BASE * mods.friction;
+            ball.vy *= SURFACE_FRICTION_BASE * mods.friction;
 
             // Stop if very slow
             const speed = Math.sqrt(ball.vx * ball.vx + ball.vy * ball.vy);
@@ -441,9 +459,13 @@
                         // Check wall in the cell we're leaving (right wall of current cell)
                         const cell = maze[cellY]?.[startCellX];
                         if (cell && cell.walls.right) {
-                            // Hit a wall! Bounce back
+                            // Hit a wall! Bounce back with difficulty-adjusted bounce factor
                             ball.x = startCellX + 1 - r;
-                            ball.vx *= -BALL_BOUNCE;
+                            ball.vx *= -(BALL_BOUNCE_BASE * mods.bounce);
+                            // Haptic feedback for mobile (wall collision)
+                            if ('vibrate' in navigator && navigator.vibrate) {
+                                navigator.vibrate(10); // Short vibration
+                            }
                         } else {
                             // No wall, move freely into new cell
                             debugMsg = `→ Cell: ${startCellX}→${endCellX}`;
@@ -452,9 +474,13 @@
                         // Check wall in the cell we're entering (left wall of destination)
                         const destCell = maze[cellY]?.[endCellX];
                         if (destCell && destCell.walls.left) {
-                            // Hit a wall! Bounce back
+                            // Hit a wall! Bounce back with difficulty-adjusted bounce factor
                             ball.x = endCellX + r;
-                            ball.vx *= -BALL_BOUNCE;
+                            ball.vx *= -(BALL_BOUNCE_BASE * mods.bounce);
+                            // Haptic feedback for mobile (wall collision)
+                            if ('vibrate' in navigator && navigator.vibrate) {
+                                navigator.vibrate(10); // Short vibration
+                            }
                         } else {
                             debugMsg = `← Cell: ${startCellX}→${endCellX}`;
                         }
@@ -490,25 +516,33 @@
                 
                 if (startCellY !== endCellY) {
                     // We crossed a horizontal cell boundary - check walls!
-                    const cellX = Math.floor(ball.x);
+                    const ballX = Math.floor(ball.x);
                     
                     if (ball.vy > 0) { // Moving down
                         // Check wall in the cell we're leaving (bottom wall of current cell)
-                        const cell = maze[startCellY]?.[cellX];
+                        const cell = maze[startCellY]?.[ballX];
                         if (cell && cell.walls.bottom) {
-                            // Hit a wall! Bounce back
+                            // Hit a wall! Bounce back with difficulty-adjusted bounce factor
                             ball.y = startCellY + 1 - r;
-                            ball.vy *= -BALL_BOUNCE;
+                            ball.vy *= -(BALL_BOUNCE_BASE * mods.bounce);
+                            // Haptic feedback for mobile (wall collision)
+                            if ('vibrate' in navigator && navigator.vibrate) {
+                                navigator.vibrate(10); // Short vibration
+                            }
                         } else {
                             debugMsg += ` | ↓ Cell: ${startCellY}→${endCellY}`;
                         }
                     } else { // Moving up
                         // Check wall in the cell we're entering (top wall of destination)
-                        const destCell = maze[endCellY]?.[cellX];
+                        const destCell = maze[endCellY]?.[ballX];
                         if (destCell && destCell.walls.top) {
-                            // Hit a wall! Bounce back
+                            // Hit a wall! Bounce back with difficulty-adjusted bounce factor
                             ball.y = endCellY + r;
-                            ball.vy *= -BALL_BOUNCE;
+                            ball.vy *= -(BALL_BOUNCE_BASE * mods.bounce);
+                            // Haptic feedback for mobile (wall collision)
+                            if ('vibrate' in navigator && navigator.vibrate) {
+                                navigator.vibrate(10); // Short vibration
+                            }
                         } else {
                             debugMsg += ` | ↑ Cell: ${startCellY}→${endCellY}`;
                         }
