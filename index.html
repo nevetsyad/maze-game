@@ -279,7 +279,7 @@
         };
 
         // Physics constants (realistic ball physics)
-        const GRAVITY_ACCEL = 0.008;      // Acceleration due to tilt
+        const GRAVITY_ACCEL = 0.012;      // Acceleration due to tilt (increased for better responsiveness)
         const SURFACE_FRICTION_BASE = 0.985;   // Rolling friction (higher = less friction)
         const BALL_BOUNCE_BASE = 0.6;          // Energy retained on wall bounce (increased for more responsive feel)
         const VELOCITY_THRESHOLD = 0.001; // Stop if below this speed
@@ -830,14 +830,19 @@
             // Device orientation values
             // Beta: front/back tilt (-180 to 180, positive = tilted forward/top down)
             // Gamma: left/right tilt (-90 to 90, positive = tilted right)
-            const beta = (event.beta || 0) * (Math.PI / 180);
-            const gamma = (event.gamma || 0) * (Math.PI / 180);
+            const beta = (event.beta || 0);
+            const gamma = (event.gamma || 0);
             
             // Ball rolls in direction of tilt (like a real ball on a tilted surface)
             // Tilt phone forward (beta positive) -> ball rolls down (vy positive)
             // Tilt phone right (gamma positive) -> ball rolls right (vx positive)
-            ball.vx += Math.sin(gamma) * GRAVITY_ACCEL;
-            ball.vy += Math.sin(beta) * GRAVITY_ACCEL;
+            
+            // Use direct angle values with higher sensitivity for better control
+            ball.vx += Math.sin(gamma * 0.5) * GRAVITY_ACCEL;
+            ball.vy += Math.sin(beta * 0.5) * GRAVITY_ACCEL;
+            
+            // Debug: log orientation values
+            console.log(`Orientation: beta=${beta.toFixed(1)}, gamma=${gamma.toFixed(1)} | vel: ${ball.vx.toFixed(4)},${ball.vy.toFixed(4)}`);
         }
 
         // Keyboard controls for desktop
