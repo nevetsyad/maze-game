@@ -157,6 +157,25 @@
             color: #666;
         }
 
+        .debug-toggle {
+            margin-top: 10px;
+        }
+
+        .debug-toggle label {
+            font-size: 0.85rem;
+            color: #aaa;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .debug-toggle input[type="checkbox"] {
+            width: 16px;
+            height: 16px;
+            cursor: pointer;
+        }
+
         .celebration {
             position: fixed;
             top: 0;
@@ -204,6 +223,13 @@
 
     <div class="controls">
         <button id="new-maze-btn">🔄 New Maze</button>
+    </div>
+
+    <div class="debug-toggle">
+        <label>
+            <input type="checkbox" id="toggle-debug"> 
+            Show cell boundaries & debug info
+        </label>
     </div>
 
     <div id="keyboard-hint">Desktop: Use Arrow keys or WASD</div>
@@ -385,6 +411,52 @@
             ctx.beginPath();
             ctx.arc(goalX, goalY, cellSize / 4 + pulse * 0.3, 0, Math.PI * 2);
             ctx.fill();
+
+            // Debug mode: Show cell boundaries and grid
+            if (debugMode) {
+                ctx.strokeStyle = 'rgba(255, 255, 255, 0.1)';
+                ctx.lineWidth = 0.5;
+                
+                // Draw cell grid
+                for (let y = 0; y <= config.rows; y++) {
+                    ctx.beginPath();
+                    ctx.moveTo(0, y * cellSize);
+                    ctx.lineTo(config.cols * cellSize, y * cellSize);
+                    ctx.stroke();
+                }
+                
+                for (let x = 0; x <= config.cols; x++) {
+                    ctx.beginPath();
+                    ctx.moveTo(x * cellSize, 0);
+                    ctx.lineTo(x * cellSize, config.rows * cellSize);
+                    ctx.stroke();
+                }
+
+                // Highlight current ball cell
+                const currentCellX = Math.floor(ball.x);
+                const currentCellY = Math.floor(ball.y);
+                
+                // Draw border around ball's current cell
+                ctx.strokeStyle = 'rgba(255, 215, 0, 0.8)'; // Gold border
+                ctx.lineWidth = 2;
+                const ballPx = currentCellX * cellSize;
+                const ballPy = currentCellY * cellSize;
+                
+                ctx.strokeRect(ballPx, ballPy, cellSize, cellSize);
+
+                // Show cell coordinates
+                ctx.fillStyle = 'rgba(255, 255, 255, 0.7)';
+                ctx.font = '10px monospace';
+                const ballCenterX = currentCellX * cellSize + cellSize / 2;
+                const ballCenterY = currentCellY * cellSize + cellSize / 2;
+                ctx.fillText(`Ball: ${currentCellX},${currentCellY}`, ballCenterX - 25, ballCenterY);
+                
+                // Show goal cell coordinates
+                ctx.fillStyle = 'rgba(74, 222, 128, 0.8)';
+                const goalCenterX = goal.x * cellSize + cellSize / 2;
+                const goalCenterY = goal.y * cellSize + cellSize / 2;
+                ctx.fillText(`Goal: ${goal.x},${goal.y}`, goalCenterX - 20, goalCenterY);
+            }
 
             // Update ball position visually
             updateBallVisuals();
@@ -731,6 +803,19 @@
             startTime = Date.now();
             initGame();
         });
+
+        // Debug mode state
+        let debugMode = false;
+        const debugCheckbox = document.getElementById('toggle-debug');
+        if (debugCheckbox) {
+            debugCheckbox.addEventListener('change', () => {
+                debugMode = debugCheckbox.checked;
+                const debugEl = document.getElementById('debug-info');
+                if (debugEl) {
+                    debugEl.style.display = debugMode ? 'block' : 'none';
+                }
+            });
+        }
 
         // Initial draw with placeholder config
         config = CONFIG.medium;
