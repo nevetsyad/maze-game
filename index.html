@@ -106,6 +106,32 @@
             font-weight: bold;
         }
 
+        .stats-row {
+            display: flex;
+            gap: 30px;
+            margin-bottom: 15px;
+        }
+
+        .high-scores {
+            display: flex;
+            gap: 20px;
+            font-size: 0.9rem;
+        }
+
+        .high-score {
+            background: rgba(255, 255, 255, 0.08);
+            padding: 8px 16px;
+            border-radius: 8px;
+        }
+
+        .high-score span {
+            color: #aaa;
+        }
+
+        .high-score b {
+            color: #4ade80;
+        }
+
         #permission-overlay {
             position: fixed;
             top: 0;
@@ -217,8 +243,16 @@
         <div id="ball"></div>
     </div>
 
-    <div class="stats">
+    <div class="stats-row">
         <div class="stat">Time: <span id="time" class="stat-value">0.0s</span></div>
+        <div id="timer-warning" class="stat" style="display:none; background: rgba(239, 68, 68, 0.3); color: #fca5a5;"></div>
+    </div>
+
+    <div class="high-scores">
+        <div class="high-score"><span>Easy:</span> <b id="best-easy">—</b></div>
+        <div class="high-score"><span>Medium:</span> <b id="best-medium">—</b></div>
+        <div class="high-score"><span>Hard:</span> <b id="best-hard">—</b></div>
+        <div class="high-score"><span>Extreme:</span> <b id="best-extreme">—</b></div>
     </div>
 
     <div class="controls">
@@ -268,6 +302,14 @@
         let cellSize = 30;
         let isPlaying = false;
         let startTime = 0;
+        
+        // Time limits per difficulty (in seconds)
+        const TIME_LIMITS = {
+            easy: 60,
+            medium: 120,
+            hard: 180,
+            extreme: 360
+        };
 
         // DOM Elements
         const canvas = document.getElementById('maze');
@@ -275,6 +317,77 @@
         const ballEl = document.getElementById('ball');
         const timeEl = document.getElementById('time');
         const overlay = document.getElementById('permission-overlay');
+        const timerWarningEl = document.getElementById('timer-warning');
+        
+        // High score display elements
+        const bestElements = {
+            easy: document.getElementById('best-easy'),
+            medium: document.getElementById('best-medium'),
+            hard: document.getElementById('best-hard'),
+            extreme: document.getElementById('best-extreme')
+        };
+
+        // Load high scores on init
+        function loadHighScores() {
+            const highScores = JSON.parse(localStorage.getItem('mazeHighScores') || '[]');
+            
+            // Find best time per difficulty
+            const bestTimes = { easy: null, medium: null, hard: null, extreme: null };
+            
+            highScores.forEach(entry => {
+                const diff = entry.difficulty;
+                if (bestTimes[diff] === null || entry.time < bestTimes[diff]) {
+                    bestTimes[diff] = entry.time;
+                }
+            });
+            
+            // Update display
+            for (const [diff, time] of Object.entries(bestTimes)) {
+                if (bestElements[diff]) {
+                    bestElements[diff].textContent = time ? `${time.toFixed(1)}s` : '—';
+                }
+            }
+        }
+
+        // Save high score if new best
+        function saveHighScore(difficulty, time) {
+            const highScores = JSON.parse(localStorage.getItem('mazeHighScores') || '[]');
+            
+            // Check if this is a new best time
+            const currentBest = highScores
+                .filter(entry => entry.difficulty === difficulty)
+                .sort((a, b) => a.time - b.time)[0]?.time;
+            
+            if (currentBest === undefined || time < currentBest) {
+                highScores.push({
+                    date: new Date().toISOString(),
+                    difficulty: difficulty,
+                    time: parseFloat(time)
+                });
+                highScores.sort((a, b) => a.time - b.time); // Keep sorted by time
+                localStorage.setItem('mazeHighScores', JSON.stringify(highScores.slice(-10)));
+                
+                // Update display
+                if (bestElements[difficulty]) {
+                    bestElements[difficulty].textContent = `${time.toFixed(1)}s`;
+                }
+            }
+        }
+
+        // Update timer warning display
+        function updateTimerWarning(elapsed, limit) {
+            const remaining = limit - elapsed;
+            
+            if (remaining <= 0) {
+                timerWarningEl.textContent = `⏰ Time's up!`;
+                timerWarningEl.style.display = 'block';
+            } else if (remaining <= 15) {
+                timerWarningEl.textContent = `⚠️ ${remaining.toFixed(0)}s left!`;
+                timerWarningEl.style.display = 'block';
+            } else {
+                timerWarningEl.style.display = 'none';
+            }
+        }
 
         // Maze generation using DFS
         function generateMaze(cols, rows) {
@@ -654,16 +767,19 @@
             isPlaying = false;
 
             const time = ((Date.now() - startTime) / 1000).toFixed(2);
+            
+            // Haptic victory pattern (mobile only)
+            if ('vibrate' in navigator && navigator.vibrate) {
+                // Celebration pattern: long vibration, short pause, double tap
+                navigator.vibrate([200, 50, 100, 50, 200]);
+            }
+            
+            // Save high score (using our new function)
+            const diff = document.getElementById('difficulty').value;
+            saveHighScore(diff, time);
+            
+            // Show victory message
             alert(`🎉 Maze Complete!\n\nTime: ${time}s`);
-
-            // Save high score
-            const highScores = JSON.parse(localStorage.getItem('mazeHighScores') || '[]');
-            highScores.push({
-                date: new Date().toISOString(),
-                difficulty: document.getElementById('difficulty').value,
-                time: parseFloat(time)
-            });
-            localStorage.setItem('mazeHighScores', JSON.stringify(highScores.slice(-10)));
         }
 
         function initGame() {
@@ -755,10 +871,18 @@
             handleKeyboard();
             updatePhysics();
 
-            // Update timer
+            // Update timer and warnings
             if (isPlaying) {
                 const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
                 timeEl.textContent = elapsed + 's';
+                
+                // Check timer warning based on difficulty
+                const diff = document.getElementById('difficulty').value;
+                const limit = TIME_LIMITS[diff];
+                
+                if (limit) {
+                    updateTimerWarning(parseFloat(elapsed), limit);
+                }
             }
 
             requestAnimationFrame(gameLoop);
@@ -817,9 +941,12 @@
             });
         }
 
-        // Initial draw with placeholder config
+        // Initial setup
         config = CONFIG.medium;
         maze = generateMaze(config.cols, config.rows);
+        
+        // Load and display high scores
+        loadHighScores();
     </script>
 </body>
 </html>
