@@ -406,74 +406,139 @@
                 ball.vy = 0;
             }
 
-            // Ball radius (fraction of cell size)
+            // Ball radius (fraction of cell size) - ball edge should touch walls
             const r = 0.3;
 
-            // Target position
-            let newX = ball.x + ball.vx;
-            let newY = ball.y + ball.vy;
+            // Clear debug info
+            let debugMsg = "";
 
-            // Clamp to maze bounds first
-            newX = Math.max(r, Math.min(config.cols - r, newX));
-            newY = Math.max(r, Math.min(config.rows - r, newY));
+            // Update position step by step for proper collision detection
+            // We'll move in small sub-steps to catch all wall collisions
+            
+            // Clamp bounds first (absolute limits)
+            let maxX = config.cols - r;
+            let maxY = config.rows - r;
 
-            // Check X movement
-            if (ball.vx !== 0) {
-                const currentCellX = Math.floor(ball.x);
-                const newCellX = Math.floor(newX);
+            // Move X axis with collision detection
+            if (Math.abs(ball.vx) > 0) {
+                const oldX = ball.x;
                 
-                if (newCellX !== currentCellX) {
-                    // Crossing cell boundary - check for wall
+                // Move ball in X direction
+                ball.x += ball.vx;
+                
+                // Clamp to bounds
+                ball.x = Math.max(r, Math.min(maxX, ball.x));
+                
+                // Check if we crossed a cell boundary (and hit a wall)
+                const startCellX = Math.floor(oldX);
+                const endCellX = Math.floor(ball.x);
+                
+                if (startCellX !== endCellX) {
+                    // We crossed a vertical cell boundary - check walls!
                     const cellY = Math.floor(ball.y);
-                    const cell = maze[cellY]?.[currentCellX];
                     
+                    if (ball.vx > 0) { // Moving right
+                        // Check wall in the cell we're leaving (right wall of current cell)
+                        const cell = maze[cellY]?.[startCellX];
+                        if (cell && cell.walls.right) {
+                            // Hit a wall! Bounce back
+                            ball.x = startCellX + 1 - r;
+                            ball.vx *= -BALL_BOUNCE;
+                        } else {
+                            // No wall, move freely into new cell
+                            debugMsg = `→ Cell: ${startCellX}→${endCellX}`;
+                        }
+                    } else { // Moving left
+                        // Check wall in the cell we're entering (left wall of destination)
+                        const destCell = maze[cellY]?.[endCellX];
+                        if (destCell && destCell.walls.left) {
+                            // Hit a wall! Bounce back
+                            ball.x = endCellX + r;
+                            ball.vx *= -BALL_BOUNCE;
+                        } else {
+                            debugMsg = `← Cell: ${startCellX}→${endCellX}`;
+                        }
+                    }
+                } else {
+                    // Didn't cross cell boundary - just clamped to edge of current cell
+                    const cell = maze[cellY]?.[startCellX];
                     if (cell) {
-                        if (ball.vx > 0 && cell.walls.right) {
-                            // Hit right wall
-                            ball.vx *= -BALL_BOUNCE;
-                            newX = currentCellX + 1 - r;
-                        } else if (ball.vx < 0 && cell.walls.left) {
-                            // Hit left wall  
-                            ball.vx *= -BALL_BOUNCE;
-                            newX = currentCellX + r;
+                        if (ball.vx > 0 && ball.x >= endCellX + 1 - r) {
+                            // Pressing against right wall
+                            ball.x = endCellX + 1 - r;
+                        } else if (ball.vx < 0 && ball.x <= endCellX + r) {
+                            // Pressing against left wall  
+                            ball.x = endCellX + r;
                         }
                     }
                 }
             }
 
-            // Check Y movement  
-            if (ball.vy !== 0) {
-                const currentCellY = Math.floor(ball.y);
-                const newCellY = Math.floor(newY);
+            // Move Y axis with collision detection (independent from X)
+            if (Math.abs(ball.vy) > 0) {
+                const oldY = ball.y;
                 
-                if (newCellY !== currentCellY) {
-                    // Crossing cell boundary - check for wall
+                // Move ball in Y direction
+                ball.y += ball.vy;
+                
+                // Clamp to bounds (after X move)
+                ball.y = Math.max(r, Math.min(maxY, ball.y));
+                
+                // Check if we crossed a cell boundary (and hit a wall)
+                const startCellY = Math.floor(oldY);
+                const endCellY = Math.floor(ball.y);
+                
+                if (startCellY !== endCellY) {
+                    // We crossed a horizontal cell boundary - check walls!
                     const cellX = Math.floor(ball.x);
-                    const cell = maze[currentCellY]?.[cellX];
                     
+                    if (ball.vy > 0) { // Moving down
+                        // Check wall in the cell we're leaving (bottom wall of current cell)
+                        const cell = maze[startCellY]?.[cellX];
+                        if (cell && cell.walls.bottom) {
+                            // Hit a wall! Bounce back
+                            ball.y = startCellY + 1 - r;
+                            ball.vy *= -BALL_BOUNCE;
+                        } else {
+                            debugMsg += ` | ↓ Cell: ${startCellY}→${endCellY}`;
+                        }
+                    } else { // Moving up
+                        // Check wall in the cell we're entering (top wall of destination)
+                        const destCell = maze[endCellY]?.[cellX];
+                        if (destCell && destCell.walls.top) {
+                            // Hit a wall! Bounce back
+                            ball.y = endCellY + r;
+                            ball.vy *= -BALL_BOUNCE;
+                        } else {
+                            debugMsg += ` | ↑ Cell: ${startCellY}→${endCellY}`;
+                        }
+                    }
+                } else {
+                    // Didn't cross cell boundary - just clamped to edge of current cell
+                    const cell = maze[startCellY]?.[cellX];
                     if (cell) {
-                        if (ball.vy > 0 && cell.walls.bottom) {
-                            // Hit bottom wall
-                            ball.vy *= -BALL_BOUNCE;
-                            newY = currentCellY + 1 - r;
-                        } else if (ball.vy < 0 && cell.walls.top) {
-                            // Hit top wall
-                            ball.vy *= -BALL_BOUNCE;
-                            newY = currentCellY + r;
+                        if (ball.vy > 0 && ball.y >= endCellY + 1 - r) {
+                            // Pressing against bottom wall
+                            ball.y = endCellY + 1 - r;
+                        } else if (ball.vy < 0 && ball.y <= endCellY + r) {
+                            // Pressing against top wall  
+                            ball.y = endCellY + r;
                         }
                     }
                 }
             }
 
-            // Apply position
-            ball.x = newX;
-            ball.y = newY;
-
-            // Update visuals
+            // Update visuals with new position
             updateBallVisuals();
 
-            // Check goal
-            if (Math.floor(ball.x) === goal.x && Math.floor(ball.y) === goal.y) {
+            // Debug: log collision info if debug enabled
+            const debugEl = document.getElementById('debug-info');
+            if (debugEl && debugEl.style.display === 'block') {
+                debugLog(`Pos: ${ball.x.toFixed(2)},${ball.y.toFixed(2)} | V: ${ball.vx.toFixed(3)},${ball.vy.toFixed(3)} ${debugMsg}`);
+            }
+
+            // Check goal - ball is in goal cell (center of ball aligns with cell)
+            if (Math.floor(ball.x + 0.5) === goal.x && Math.floor(ball.y + 0.5) === goal.y) {
                 gameWon();
             }
         }
